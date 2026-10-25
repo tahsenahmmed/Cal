@@ -5,8 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: cal-android-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Compile, lint, and package Cal
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -21,13 +29,27 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Install required Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
+      - name: Check Gradle and Java versions
+        run: |
+          java -version
+          gradle --version
+
+      - name: Run Android lint
+        run: gradle lintDebug --stacktrace
+
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
