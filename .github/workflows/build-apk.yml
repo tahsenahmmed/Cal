@@ -16,6 +16,9 @@ jobs:
   build:
     name: Compile, lint, and package Cal
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -26,28 +29,37 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu runner already includes the Android SDK. Avoid
+      # setup-android's deprecated "tools" package installation, which fails.
+      - name: Locate preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          "$SDKMANAGER" --version
 
       - name: Accept Android SDK licenses
-        # "yes" can receive SIGPIPE after sdkmanager finishes; don't let that
-        # harmless pipe exit code fail the entire job.
         shell: bash
         run: |
           set +o pipefail
-          yes | sdkmanager --licenses
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
           set -o pipefail
 
       - name: Install required Android SDK packages
-        run: sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+        run: '"$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"'
 
       - name: Verify Android SDK installation
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
-          sdkmanager --list_installed
-          test -d "${ANDROID_HOME}/platforms/android-35"
-          test -d "${ANDROID_HOME}/build-tools/35.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --list_installed
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools/35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
